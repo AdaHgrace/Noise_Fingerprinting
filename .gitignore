@@ -1,0 +1,57 @@
+# Virtual environments
+.env/
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment variable files
+.env.local
+.env.*
+!.env.example
+
+# Data
+data/
+datasets/
+*.csv
+*.tsv
+*.jsonl
+*.parquet
+*.h5
+*.hdf5
+
+# Models and ML artifacts
+models/
+checkpoints/
+artifacts/
+outputs/
+runs/
+mlruns/
+wandb/
+*.pkl
+*.pickle
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.safetensors
+
+# Logs
+logs/
+*.log
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
