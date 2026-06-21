@@ -6,7 +6,7 @@ This repository accompanies the paper *"Shadow-Based Noise Fingerprinting for Qu
 
 ## Overview
 
-Accurately identifying the dominant noise channel on a quantum device is a prerequisite for effective error mitigation, but full process tomography scales exponentially with system size. This project explores whether a lightweight, scalable alternative — combining randomized Pauli measurements (classical shadows) with physics-informed feature engineering — can reliably distinguish between common noise channels using only a small set of structured probe circuits.
+Accurately identifying the dominant noise channel on a quantum device is a prerequisite for effective error mitigation, but full process tomography scales exponentially with system size. This project explores whether a lightweight, scalable alternative by combining randomized Pauli measurements, classical shadows with physics-informed feature engineering to reliably distinguish between common noise channels using only a small set of structured probe circuits.
 
 The pipeline:
 1. Prepares a fixed set of 3-qubit probe circuits: simple structured states + QAOA-style circuits
