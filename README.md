@@ -94,7 +94,7 @@ This trains the specified classifiers, evaluates them on a held-out test set, an
 | Argument | Description | Default |
 |---|---|---|
 | `--models` | Comma-separated: `random_forest`, `extra_trees`, `mlp` | all three |
-| `--seed` | Random seed (affects train/test split and model init) | 42 |
+| `--seed` | Random seed (affects model init) | 42 |
 | `--output-dir` | Output directory | timestamped folder |
 
 ## Results
