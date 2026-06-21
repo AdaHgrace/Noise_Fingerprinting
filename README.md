@@ -123,4 +123,4 @@ If you use this code, please cite the accompanying paper:
 
 ## License
 
-MIT License (or update to your preferred license).
+MIT License.
