@@ -2,7 +2,10 @@
 shadow.py
 
 Classical shadow tomography utilities for the Shadow-Based Noise
-Fingerprinting pipeline.
+Fingerprinting pipeline described in:
+
+    "Shadow-Based Noise Fingerprinting for Quantum Processors"
+    Vridhi Jain, Lei Zhang (2026)
 
 This module implements a randomized Pauli classical shadow measurement
 pipeline for estimating Pauli observable expectation values from a
@@ -57,16 +60,7 @@ PAULI_BASES = ["X", "Y", "Z"]
 
 
 def _validate_pauli_string(pauli_string: str):
-    """
-    Validate that ``pauli_string`` contains only I, X, Y, Z characters.
-
-    Args:
-        pauli_string: String to validate, e.g. ``"XIY"``.
-
-    Raises:
-        TypeError: If ``pauli_string`` is not a string.
-        ValueError: If ``pauli_string`` is empty or contains invalid characters.
-    """
+    """Raise if pauli_string is not a non-empty string of I/X/Y/Z characters."""
 
     allowed = {"I", "X", "Y", "Z"}
 
@@ -85,27 +79,9 @@ def _validate_pauli_string(pauli_string: str):
 
 def _rotate_into_basis(circuit, basis_string: str):
     """
-    Return a copy of ``circuit`` with single-qubit basis rotations
-    appended before a final ``measure_all``.
+    Return a copy of circuit with single-qubit basis rotations and measure_all appended.
 
-    Measurement convention:
-
-    * **Z basis** — no rotation needed; measure directly.
-    * **X basis** — apply Hadamard (H) before measurement.
-    * **Y basis** — apply S†, then H before measurement.
-
-    Args:
-        circuit: Qiskit ``QuantumCircuit`` without final measurements.
-        basis_string: String of length ``n_qubits``, e.g. ``"XYZ"``.
-            Each character specifies the measurement basis for the
-            corresponding qubit.
-
-    Returns:
-        New ``QuantumCircuit`` with rotations and measurements appended.
-
-    Raises:
-        ValueError: If ``len(basis_string) != circuit.num_qubits`` or
-            an unknown basis character is encountered.
+    Z basis: no rotation. X basis: H gate. Y basis: S† then H.
     """
 
     n_qubits = circuit.num_qubits
@@ -188,22 +164,10 @@ def _sample_one_basis(
     seed: int = 42,
 ):
     """
-    Execute ``circuit`` in ``basis_string`` for a single shot and return
-    the measured bitstring.
+    Execute circuit in basis_string for a single shot and return the measured bitstring.
 
-    Each shot uses ``shots=1`` so that every measurement can be taken
-    in an independently sampled random basis, matching the classical
-    shadow protocol.
-
-    Args:
-        circuit: Qiskit ``QuantumCircuit`` without measurements.
-        basis_string: Pauli basis to measure in, e.g. ``"XYZ"``.
-        noise_model: Optional Qiskit Aer ``NoiseModel``.
-        seed: Simulator seed for this shot.
-
-    Returns:
-        Bitstring aligned to qubit order: ``bitstring[q]`` corresponds
-        to qubit ``q``.
+    Uses shots=1 so each measurement can use an independently sampled random basis,
+    matching the classical shadow protocol. bitstring[q] corresponds to qubit q.
     """
 
     measured_circuit = _rotate_into_basis(
@@ -298,19 +262,7 @@ def _shot_matches_observable(
     basis_string: str,
     observable: str,
 ):
-    """
-    Return ``True`` if this shot's basis is compatible with ``observable``.
-
-    A shot matches if, for every non-identity Pauli in the observable,
-    the corresponding qubit was measured in the same basis.
-
-    Args:
-        basis_string: Basis used for this shot, e.g. ``"XYZ"``.
-        observable: Pauli string, e.g. ``"XIZ"``.
-
-    Returns:
-        ``True`` if the shot can contribute to estimating ``observable``.
-    """
+    """Return True if every non-identity Pauli in observable was measured in the matching basis."""
 
     for basis, pauli in zip(basis_string, observable):
         if pauli == "I":
@@ -325,26 +277,7 @@ def _pauli_eigenvalue_from_bitstring(
     bitstring: str,
     observable: str,
 ):
-    """
-    Compute the Pauli eigenvalue contribution from a measured bitstring.
-
-    For each non-identity position:
-
-    * Bit ``0`` → eigenvalue factor ``+1``
-    * Bit ``1`` → eigenvalue factor ``-1``
-
-    The total eigenvalue is the product across all non-identity positions.
-
-    Args:
-        bitstring: Measured bitstring in qubit order.
-        observable: Pauli string aligned to the same qubit ordering.
-
-    Returns:
-        Integer eigenvalue: ``+1`` or ``-1``.
-
-    Raises:
-        ValueError: If an unexpected bit character is encountered.
-    """
+    """Return the product of per-qubit eigenvalues (+1 for bit 0, -1 for bit 1) at non-identity positions."""
 
     eigenvalue = 1
 
@@ -482,15 +415,3 @@ def run_shadow_and_estimate(
     )
 
     return values, shadow_data
-
-
-def estimate_pauli_from_shots(shadow_data, observable: str):
-    """
-    Alias for :func:`estimate_pauli_from_shadow`.
-
-    Provided for backward compatibility with older scripts.
-    """
-    return estimate_pauli_from_shadow(
-        shadow_data=shadow_data,
-        observable=observable,
-    )
