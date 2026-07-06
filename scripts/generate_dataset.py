@@ -197,7 +197,7 @@ def generate_dataset(
                 max_strength=max_strength,
             )
 
-            sample_seed = seed + sample_id * 17
+            sample_seed = seed + (sample_id % 7000) * 17
 
             task = (
                 sample_id,
