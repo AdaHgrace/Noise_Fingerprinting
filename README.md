@@ -57,6 +57,8 @@ pip install -r requirements.txt
 
 ### 1. Generate a dataset
 
+If you want to skip this step, our dataset is ready in folder "data" with name of "qaoa_dataset.npz".
+
 ```bash
 python3 -m scripts.generate_dataset \
     --output data/my_dataset.npz \
