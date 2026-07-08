@@ -21,7 +21,7 @@ __pycache__/
 
 # Data
 #data/
-datasets/
+#datasets/
 *.csv
 *.tsv
 *.jsonl
