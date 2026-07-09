@@ -1,8 +1,8 @@
-# Shadow-Based Noise Fingerprinting for Quantum Processors
+# Shadow-Based Noise Fingerprinting of Simulated Quantum Noise Models
 
 A scalable pipeline for identifying quantum noise channels using classical shadow tomography and physics-informed feature engineering. Given measurement data from a fixed set of 3-qubit probe circuits, the pipeline classifies the underlying noise model among ten candidate channels using ensemble machine learning methods.
 
-This repository accompanies the paper *"Shadow-Based Noise Fingerprinting for Quantum Processors."*
+This repository accompanies the paper *"Shadow-Based Noise Fingerprinting of Simulated Quantum Noise Models."*
 
 ## Overview
 
@@ -58,16 +58,19 @@ pip install -r requirements.txt
 ## Usage
 
 ### 0. Smoke Test
-If you want to check the pipeline by running a fast smoke test:
+
+Run a fast smoke test to check that the pipeline works:
 
 ```bash
 python3 -m smoke_test
 ```
-
-
 ### 1. Generate a dataset
 
-If you want to skip this step, our dataset is ready in folder "data" with name of "qaoa_dataset.npz".
+If you want to skip this step, use the pre-generated dataset located at:
+
+```bash
+data/qaoa_dataset.npz
+```
 
 ```bash
 python3 -m scripts.generate_dataset \
