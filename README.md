@@ -119,9 +119,9 @@ On a dataset of 14,000 labeled samples (1,400 per class), evaluated over three r
 
 | Classifier | Accuracy (%) | Macro F1 |
 |---|---|---|
-| Random Forest | 84.26 ± 0.34 | 0.8437 ± 0.0033 |
-| Extra Trees | 84.06 ± 0.16 | 0.8417 ± 0.0020 |
-| MLP | 79.25 ± 0.42 | 0.7924 ± 0.0046 |
+| Random Forest | 84.26 ± 0.0036 | 0.8437 ± 0.0039 |
+| Extra Trees | 84.06 ± 0.0019 | 0.8417 ± 0.0024 |
+| MLP | 79.25 ± 0.0042 | 0.7924 ± 0.0046 |
 
 See the paper for full confusion matrix analysis, scaling behavior, and discussion.
 
