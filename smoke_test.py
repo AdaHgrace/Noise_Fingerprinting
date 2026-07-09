@@ -13,7 +13,7 @@ This smoke test uses a very small dataset (50 samples per class, 500
 total) to complete quickly. Classification accuracy on this dataset will
 be substantially lower than the results reported in the paper (~84%),
 which were obtained with 1,400 samples per class. Low accuracy here
-(typically 20-50%) is expected and does not indicate a problem with
+(typically 15-50%) is expected and does not indicate a problem with
 your installation.
 
 To reproduce the paper results, use the full dataset generation command
@@ -22,7 +22,7 @@ documented in the README.
 Usage:
     python3 smoke_test.py
 
-Expected runtime: 5-15 minutes depending on hardware.
+Expected runtime: 15-25 minutes depending on hardware.
 """
 
 import os

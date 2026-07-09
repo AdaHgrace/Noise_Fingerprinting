@@ -33,8 +33,10 @@ Noise_Fingerprinting/
 │   ├── generate_dataset.py  # Build a labeled dataset
 │   └── train_classifier.py  # Train and evaluate classifiers
 ├── data/                     # Generated datasets (.npz)
-├── results/                   # Training outputs, metrics, models
-└── requirements.txt
+├── results/                  # Training outputs, metrics, models
+├── requirements.txt              
+└── smoke_test.py
+
 ```
 
 ## Installation
@@ -54,6 +56,14 @@ pip install -r requirements.txt
 **Core dependencies:** `qiskit`, `qiskit-aer`, `numpy`, `scikit-learn`, `joblib`, `tqdm`, `matplotlib`, `seaborn`
 
 ## Usage
+
+### 0. Smoke Test
+If you want to check the pipeline by running a fast smoke test:
+
+```bash
+python3 -m smoke_test
+```
+
 
 ### 1. Generate a dataset
 
