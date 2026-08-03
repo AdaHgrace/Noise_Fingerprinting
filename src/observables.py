@@ -1,84 +1,83 @@
 """
 observables.py
 
-3-qubit Pauli observables used for classical shadow estimation in the
-noise fingerprinting pipeline.
+Pauli observables for quantum noise fingerprinting, generalized to
+any number of qubits.
 
-OBSERVABLES contains 18 Pauli strings: single-qubit terms (e.g. "XII")
-and two-qubit same-axis correlations (e.g. "XXI"). OBSERVABLE_GROUPS
-organizes these into axis-based and locality-based subsets used for
-derived feature construction in fingerprint.py.
- 
-Each sample uses 9 probe circuits (4 simple + 5 QAOA). Per probe:
-18 raw observables + 13 derived features = 31 features.
-Total feature vector size: 9 x 31 = 279, matching the dimensionality
-reported in the accompanying paper.
+Pattern:
+    - Single-qubit observables: X/Y/Z on each individual qubit
+      position, identity elsewhere. Count: 3 * n_qubits.
+    - Two-qubit same-axis correlations: X/Y/Z applied identically to
+      every PAIR of qubits (all C(n_qubits, 2) pairs, not just
+      adjacent ones), identity elsewhere. Count: 3 * C(n_qubits, 2).
+
+    Total observables for n qubits: 3*n + 3*C(n,2) = 3*n*(n+1)/2.
+    For n=3 this reproduces your original 18 observables exactly.
+
+Growth is QUADRATIC in n_qubits.
+
+Use generate_observables(n_qubits) to get the right observable set
+and groups for a given qubit count. The module-level OBSERVABLES /
+OBSERVABLE_GROUPS below remain as the n_qubits=3 case, for backward
+compatibility with any code that imports them directly.
 """
 
-OBSERVABLES = [
-    # Single-qubit observables
-    "XII", "YII", "ZII",
-    "IXI", "IYI", "IZI",
-    "IIX", "IIY", "IIZ",
+from itertools import combinations
 
-    # Two-qubit same-axis correlations
-    "XXI", "YYI", "ZZI",
-    "XIX", "YIY", "ZIZ",
-    "IXX", "IYY", "IZZ",
-]
+def generate_observables(n_qubits: int):
+    """
+    Generate the full observable set and groups for a given number
+    of qubits, following the same pattern as the original 3-qubit set:
+    all single-qubit X/Y/Z observables, plus all pairwise same-axis
+    two-qubit correlations.
 
+    Args:
+        n_qubits: Number of qubits.
 
-OBSERVABLE_GROUPS = {
-    "x_like": [
-        "XII", "IXI", "IIX",
-        "XXI", "XIX", "IXX",
-    ],
+    Returns:
+        (observables, observable_groups) where:
+            observables: list of Pauli strings, length n_qubits each.
+            observable_groups: dict with keys "x_like", "y_like",
+                "z_like", "mixed", "single_qubit", "two_qubit".
+    """
+    if n_qubits < 1:
+        raise ValueError("n_qubits must be >= 1.")
 
-    "y_like": [
-        "YII", "IYI", "IIY",
-        "YYI", "YIY", "IYY",
-    ],
+    axes = ["X", "Y", "Z"]
 
-    "z_like": [
-        "ZII", "IZI", "IIZ",
-        "ZZI", "ZIZ", "IZZ",
-    ],
+    def make_string(positions_and_axis, n):
+        """positions_and_axis: dict {qubit_index: axis_char}"""
+        chars = ["I"] * n
+        for pos, axis in positions_and_axis.items():
+            chars[pos] = axis
+        return "".join(chars)
 
-    # Empty: OBSERVABLES contains no mixed-axis Pauli strings.
-    "mixed": [],
+    single_qubit = []
+    for axis in axes:
+        for pos in range(n_qubits):
+            single_qubit.append(make_string({pos: axis}, n_qubits))
 
-    "single_qubit": [
-        "XII", "YII", "ZII",
-        "IXI", "IYI", "IZI",
-        "IIX", "IIY", "IIZ",
-    ],
+    two_qubit = []
+    if n_qubits >= 2:
+        for axis in axes:
+            for i, j in combinations(range(n_qubits), 2):
+                two_qubit.append(make_string({i: axis, j: axis}, n_qubits))
 
-    "two_qubit": [
-        "XXI", "YYI", "ZZI",
-        "XIX", "YIY", "ZIZ",
-        "IXX", "IYY", "IZZ",
-    ],
-}
+    observables = single_qubit + two_qubit
+
+    groups = {
+        "x_like": [obs for obs in observables if obs.count("X") > 0],
+        "y_like": [obs for obs in observables if obs.count("Y") > 0],
+        "z_like": [obs for obs in observables if obs.count("Z") > 0],
+        "mixed": [],  # reserved for future mixed-axis observables (e.g. "XYI")
+        "single_qubit": single_qubit,
+        "two_qubit": two_qubit,
+    }
+
+    return observables, groups
 
 
 def validate_observables(observables):
-    """
-    Validate a list of Pauli observable strings.
-
-    Checks that the list is non-empty, that every observable has the
-    same length (i.e. acts on the same number of qubits), and that
-    every character is a valid Pauli label (I, X, Y, or Z).
-
-    Args:
-        observables: List of Pauli strings, e.g. ["XII", "ZZI"].
-
-    Returns:
-        True if all observables are valid.
-
-    Raises:
-        ValueError: If the list is empty, observables have
-            inconsistent lengths, or an invalid character is found.
-    """
     allowed = {"I", "X", "Y", "Z"}
 
     if len(observables) == 0:
@@ -98,13 +97,10 @@ def validate_observables(observables):
 
 
 def get_num_qubits_from_observable(obs: str) -> int:
-    """
-    Return the number of qubits implied by a Pauli observable string.
-
-    Args:
-        obs: Pauli string, e.g. "XII".
-
-    Returns:
-        Length of the string, equal to the number of qubits it acts on.
-    """
     return len(obs)
+
+# Backward-compatible module-level constants for the original 3-qubit
+# case, so any existing code that does
+# `from src.observables import OBSERVABLES, OBSERVABLE_GROUPS`
+# continues to work unchanged.
+OBSERVABLES, OBSERVABLE_GROUPS = generate_observables(3)
