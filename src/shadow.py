@@ -1,51 +1,53 @@
 """
 shadow.py
 
-Classical shadow tomography utilities for the Shadow-Based Noise
-Fingerprinting pipeline described in:
+Classical shadow tomography utilities for quantum noise fingerprinting.
 
-    "Shadow-Based Noise Fingerprinting for Quantum Processors"
-    Vridhi Jain, Lei Zhang (2026)
+This file implements a randomized Pauli classical-shadow style
+measurement pipeline:
 
-This module implements a randomized Pauli classical shadow measurement
-pipeline for estimating Pauli observable expectation values from a
-quantum circuit executed on a (potentially noisy) device.
+1. For each shot:
+   - Randomly choose a measurement basis for every qubit from {X, Y, Z}
+   - Rotate the circuit into that basis
+   - Measure all qubits
 
-Pipeline overview
------------------
-For each of `shots` independent measurements:
+2. Store:
+   - The chosen basis string, e.g. "XZY"
+   - The measured bitstring, e.g. "010"
 
-1. Randomly sample a Pauli basis for every qubit from {X, Y, Z}.
-2. Rotate the circuit into that basis and measure all qubits,
-   obtaining a classical bitstring.
-3. Store the chosen basis string (e.g. "XZY") and the measured
-   bitstring (e.g. "010").
+3. Estimate Pauli observables from the shadow data.
 
-Observable estimation
----------------------
-For a Pauli observable P, a single shot contributes to the estimate
-only if every non-identity Pauli in P was measured in the matching
-basis. The standard classical shadow inverse channel factor 3^k is
-applied, where k is the number of non-identity Paulis in P.
+For a Pauli observable P, a shot contributes only if every non-identity
+Pauli in P was measured in the matching basis.
 
 Example:
-    Observable: "XIZ"
-    Basis:      "XZZ"
+    Observable: "XIY"
+    Basis:      "XZY"
 
-    qubit 0: X matches X  -> contributes
-    qubit 1: I is ignored -> contributes
-    qubit 2: Z matches Z  -> contributes
+This shot can contribute because:
+    qubit 0: X matches X
+    qubit 1: I is ignored
+    qubit 2: Y matches Y
 
-    This shot CAN contribute to estimating "XIZ".
+The estimator uses the standard Pauli classical shadow inverse factor:
+    3^k
 
-This approach lets many observables be estimated from the same
-randomized measurement data, avoiding a separate circuit execution
-per observable.
+where k is the number of non-identity Paulis in the observable.
 
-Reference:
-    Huang, H.-Y., Kueng, R., & Preskill, J. (2020).
-    Predicting many properties of a quantum system from very few
-    measurements. Nature Physics, 16(10), 1050-1057.
+This lets us estimate many observables from the same randomized
+measurement data instead of running a separate circuit for each observable.
+
+Performance note:
+    Shots are grouped by unique measurement basis. All unique-basis
+    circuits are transpiled together in a single BATCHED transpile()
+    call (rather than one call per basis), since transpile's setup
+    cost (building the preset pass manager / basis-gate mapping) is
+    shared across a list of circuits instead of being repeated per
+    call. Each unique basis is then executed with a single
+    simulator.run() call for its shot count. This matters more as
+    n_qubits grows, since the number of unique bases is 3^n_qubits --
+    9 at n=2, 27 at n=3, 81 at n=4, etc. -- so per-call transpile
+    overhead compounds quickly without batching.
 """
 
 import numpy as np
@@ -173,11 +175,12 @@ def run_shadow_tomography(
     """
     Run randomized Pauli classical shadow tomography for one circuit.
 
-    Shots are grouped by unique measurement basis and executed with one
-    simulator call per unique basis (shots=<count for that basis>),
-    instead of one simulator call per individual shot. This preserves
-    the exact same underlying statistics as simulating shot-by-shot --
-    only the execution strategy changes.
+    Shots are grouped by unique measurement basis and executed via a
+    single BATCHED transpile() call across all unique-basis circuits,
+    followed by one simulator.run() call per unique basis (shots=
+    <count for that basis>). This preserves the exact same underlying
+    statistics as simulating shot-by-shot or transpiling one-at-a-time
+    -- only the execution strategy changes.
 
     Args:
         circuit:
@@ -221,19 +224,25 @@ def run_shadow_tomography(
         seed_simulator=seed,
     )
 
+    # Build all unique-basis circuits up front.
+    measured_circuits = [
+        _rotate_into_basis(circuit=circuit, basis_string=basis_string)
+        for basis_string in unique_bases
+    ]
+
+    # Batched transpile: ONE call for the whole list instead of one
+    # call per unique basis. Qiskit shares pass-manager construction
+    # across the list rather than rebuilding it per circuit -- this
+    # matters a lot as n_qubits grows, since unique-basis count is
+    # 3^n_qubits.
+    compiled_circuits = transpile(measured_circuits, simulator)
+
     all_basis_strings = []
     all_bitstrings = []
 
-    for basis_idx, (basis_string, n_shots_for_basis) in enumerate(
-        zip(unique_bases, counts_per_basis)
+    for basis_idx, (basis_string, n_shots_for_basis, compiled) in enumerate(
+        zip(unique_bases, counts_per_basis, compiled_circuits)
     ):
-        measured_circuit = _rotate_into_basis(
-            circuit=circuit,
-            basis_string=basis_string,
-        )
-
-        compiled = transpile(measured_circuit, simulator)
-
         result = simulator.run(
             compiled,
             shots=int(n_shots_for_basis),
