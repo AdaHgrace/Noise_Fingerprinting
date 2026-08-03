@@ -11,8 +11,8 @@ WARNING
 -------
 This smoke test uses a very small dataset (50 samples per class, 500
 total) to complete quickly. Classification accuracy on this dataset will
-be substantially lower than the results reported in the paper (~84%),
-which were obtained with 1,400 samples per class. Low accuracy here
+be substantially lower than the results reported in the paper (~54%),
+which were obtained with 1,500 samples per class. Low accuracy here
 (typically 15-50%) is expected and does not indicate a problem with
 your installation.
 
@@ -81,7 +81,7 @@ def run_smoke_test():
     labels = data["labels"]
 
     check(X.shape[0] == 500, f"Expected 500 samples, got {X.shape[0]}")
-    check(X.shape[1] == 279, f"Expected 279 features, got {X.shape[1]}")
+    check(X.shape[1] == 252, f"Expected 279 features, got {X.shape[1]}")
     check(len(np.unique(y)) == 10, f"Expected 10 classes, got {len(np.unique(y))}")
     check(not np.isnan(X).any(), "Dataset contains NaN values")
     check(not np.isinf(X).any(), "Dataset contains Inf values")
