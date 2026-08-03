@@ -12,7 +12,7 @@ The pipeline:
 1. Prepares a fixed set of 3-qubit probe circuits: simple structured states + QAOA-style circuits
 2. Executes them on a simulated noisy device: Qiskit Aer
 3. Estimates Pauli observables via randomized classical shadow measurements
-4. Builds a 279-dimensional feature vector per sample 
+4. Builds a 252-dimensional feature vector per sample 
 5. Classifies the noise type using Random Forest, Extra Trees, or an MLP
 
 ## Noise types covered
@@ -115,15 +115,15 @@ This trains the specified classifiers, evaluates them on a held-out test set, an
 
 ## Results
 
-On a dataset of 14,000 labeled samples (1,400 per class), evaluated over three random seeds:
+On a dataset of 15,000 labeled samples (1,500 per class), evaluated over three random seeds:
 
-| Classifier | Accuracy (%) | Macro F1 |
+| Classifier | Accuracy | Macro F1 |
 |---|---|---|
-| Random Forest | 84.26 ± 0.0036 | 0.8437 ± 0.0039 |
-| Extra Trees | 84.06 ± 0.0019 | 0.8417 ± 0.0024 |
-| MLP | 79.25 ± 0.0042 | 0.7924 ± 0.0046 |
+| Extra Trees | 0.5446 ± 0.0064 | 0.5413 ± 0.0077 |
+| MLP | 0.5409 ± 0.0028 | 0.5326 ± 0.0060 |
+| Random Forest | 0.5366 ± 0.0046 | 0.5344 ± 0.0050 |
 
-See the paper for full confusion matrix analysis, scaling behavior, and discussion.
+All three classifiers achieve comparable performance, suggesting that classifier expressivity is not the primary bottleneck. See the paper for full confusion matrix analysis and discussion.
 
 ## Citation
 
