@@ -33,23 +33,16 @@ NOISE_TYPES = [
 
 def get_noise_model(noise_type: str, strength: float) -> NoiseModel:
     """
-    Create a Qiskit Aer NoiseModel for one of the supported noise types.
+    Create a Qiskit Aer NoiseModel.
 
     Args:
-        noise_type: Type of noise channel. Must be one of NOISE_TYPES.
-        strength: Noise strength / probability, in [0, 1]. Interpreted
-            differently depending on noise_type (e.g. as a Pauli error
-            probability for bit_flip/phase_flip, or used to derive T1/T2
-            for thermal_relaxation).
+        noise_type:
+            Type of noise channel.
+        strength:
+            Noise strength / probability. Usually between 0 and 1.
 
     Returns:
-        A Qiskit Aer NoiseModel with the requested error channel applied
-        to all single- and two-qubit gates (or to readout, for the
-        "readout" noise type).
-
-    Raises:
-        ValueError: If noise_type is not recognized, or if strength is
-            outside [0, 1].
+        Qiskit Aer NoiseModel.
     """
 
     if noise_type not in NOISE_TYPES:
@@ -88,16 +81,18 @@ def get_noise_model(noise_type: str, strength: float) -> NoiseModel:
         noise_model.add_all_qubit_quantum_error(error_2q, two_qubit_gates)
 
     elif noise_type == "phase_amplitude_damping":
-        # Amplitude and phase damping rates are both tied to strength.
-        # Future work could parameterize these independently.
-        error_1q = phase_amplitude_damping_error(strength, strength)
+        # Split the strength budget between amplitude and phase damping
+        # so amplitude_param + phase_param == strength, staying valid
+        # for the FULL strength range [0, 1]
+        error_1q = phase_amplitude_damping_error(strength/2, strength/2)
         error_2q = error_1q.tensor(error_1q)
 
         noise_model.add_all_qubit_quantum_error(error_1q, one_qubit_gates)
         noise_model.add_all_qubit_quantum_error(error_2q, two_qubit_gates)
 
     elif noise_type == "thermal_relaxation":
-        # T1 and T2 are derived from strength, with a fixed gate time.
+        # Simple parameterization.
+        # Gate time is fixed and T1/T2 are controlled indirectly by strength.
         gate_time = 100
         t1 = max(1.0, 1000 / (strength + 1e-6))
         t2 = max(1.0, 800 / (strength + 1e-6))
@@ -129,8 +124,8 @@ def get_noise_model(noise_type: str, strength: float) -> NoiseModel:
         noise_model.add_all_qubit_quantum_error(error_2q, two_qubit_gates)
 
     elif noise_type == "pauli_asymmetric":
-        # Asymmetric Pauli noise with a fixed 60/25/15 X/Y/Z split,
-        # intentionally different from symmetric depolarizing noise.
+        # Asymmetric Pauli noise.
+        # This is intentionally different from depolarizing noise.
         px = 0.60 * strength
         py = 0.25 * strength
         pz = 0.15 * strength
@@ -148,8 +143,7 @@ def get_noise_model(noise_type: str, strength: float) -> NoiseModel:
         noise_model.add_all_qubit_quantum_error(error_2q, two_qubit_gates)
 
     elif noise_type == "readout":
-        # Symmetric readout confusion: probability `strength` of
-        # flipping the measured bit, for both 0->1 and 1->0.
+        # Symmetric readout confusion.
         p = strength
         readout_error = ReadoutError([
             [1 - p, p],
