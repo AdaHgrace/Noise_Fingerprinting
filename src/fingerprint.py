@@ -48,7 +48,7 @@ def build_derived_features(raw_values, observables=OBSERVABLES):
         observables: Observable names corresponding to raw_values.
 
     Returns:
-        List of 13 derived features for the given probe.
+        List of 10 derived features for the given probe.
     """
 
     eps = 1e-8
@@ -61,7 +61,6 @@ def build_derived_features(raw_values, observables=OBSERVABLES):
     mean_x = compute_group_mean(feature_dict, OBSERVABLE_GROUPS["x_like"])
     mean_y = compute_group_mean(feature_dict, OBSERVABLE_GROUPS["y_like"])
     mean_z = compute_group_mean(feature_dict, OBSERVABLE_GROUPS["z_like"])
-    mean_mixed = compute_group_mean(feature_dict, OBSERVABLE_GROUPS["mixed"])
 
     coherence_strength = mean_x + mean_y
     population_strength = mean_z
@@ -70,7 +69,6 @@ def build_derived_features(raw_values, observables=OBSERVABLES):
         mean_x,
         mean_y,
         mean_z,
-        mean_mixed,
 
         coherence_strength,
         population_strength,
@@ -81,9 +79,6 @@ def build_derived_features(raw_values, observables=OBSERVABLES):
 
         coherence_strength / (population_strength + eps),
         population_strength / (coherence_strength + eps),
-
-        mean_mixed / (coherence_strength + eps),
-        mean_mixed / (population_strength + eps),
     ]
 
     return derived
@@ -133,7 +128,8 @@ def build_fingerprint(
     all_features = []
 
     for probe_idx, (probe_name, circuit) in enumerate(probes):
-        raw_values, _ = run_shadow_and_estimate(
+        
+        raw_values,_ = run_shadow_and_estimate(
             circuit=circuit,
             observables=OBSERVABLES,
             noise_model=noise_model,
