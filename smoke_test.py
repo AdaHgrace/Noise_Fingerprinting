@@ -48,7 +48,7 @@ def run_smoke_test():
     print("=" * 70)
     print()
     print("WARNING: This test uses only 50 samples per class (500 total).")
-    print("Accuracy will be much lower than the paper results (~84%).")
+    print("Accuracy will be much lower than the paper results (~54%).")
     print("Low accuracy here is expected and does not indicate a problem")
     print("with your installation.")
     print()

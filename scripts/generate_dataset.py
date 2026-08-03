@@ -16,29 +16,36 @@ The saved file contains:
     labels : noise type names
     meta   : metadata for each sample
 
+A small number of samples can occasionally fail with rare,
+non-deterministic Aer numerical errors (e.g. "Kraus is empty",
+Hermitian eigensolver failures on near-degenerate density matrices).
+These are now SKIPPED rather than crashing the whole run -- their
+details are logged to a separate _failed_tasks.json file so they can
+be retried/recovered afterward (see recover_failed_tasks.py).
+
 Usage (run from the project root):
-    python3 -m scripts.generate_dataset \\
-        --output data/your_dataset.npz \\
-        --samples-per-class 1000 \\
-        --shots 200 \\
-        --n-qubits 3 \\
-        --num-qaoa-probes 5 \\
-        --num-workers 4 \\
+    python3 -m scripts.generate_dataset \
+        --output data/your_dataset.npz \
+        --samples-per-class 1500 \
+        --shots 200 \
+        --n-qubits 3 \
+        --num-qaoa-probes 5 \
+        --num-workers 4 \
         --noise-types all
 """
 
 import os
+import json
 import argparse
 import numpy as np
 from tqdm import tqdm
-
 from src.noise_models import NOISE_TYPES
 from src.fingerprint import build_fingerprint
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
-def sample_strength(noise_type, rng, min_strength=0.01, max_strength=0.15):
+def sample_strength(noise_type, rng, min_strength=0.03, max_strength=0.15):
     """
     Sample a noise strength for a given noise type.
 
@@ -47,7 +54,7 @@ def sample_strength(noise_type, rng, min_strength=0.01, max_strength=0.15):
     strength ranges can be added later without changing call sites.
 
     Args:
-        noise_type: Noise channel name (unused for now, see above).
+        noise_type: Noise channel name (unused for now).
         rng: NumPy random Generator.
         min_strength: Lower bound of the sampling range.
         max_strength: Upper bound of the sampling range.
@@ -72,6 +79,11 @@ def generate_one_sample(task):
 
     Returns:
         Tuple of (sample_id, fingerprint, class_id, meta).
+
+    Raises:
+        Whatever build_fingerprint raises -- callers that want to
+        skip failures instead of crashing should use
+        safe_generate_one_sample instead.
     """
 
     (
@@ -114,19 +126,89 @@ def generate_one_sample(task):
     return sample_id, fingerprint, class_id, meta
 
 
+def safe_generate_one_sample(task):
+    """
+    Wraps generate_one_sample so a single failing task (e.g. the rare
+    "Kraus is empty" / Hermitian eigensolver crash) doesn't kill the
+    whole dataset generation run.
+
+    Returns the normal (sample_id, fingerprint, class_id, meta) tuple
+    on success. On failure, returns (sample_id, None, class_id, meta)
+    where meta contains the failure details instead -- callers must
+    check `fingerprint is None` to detect a skipped sample.
+    """
+    (
+        sample_id,
+        noise_type,
+        class_id,
+        strength,
+        shots,
+        sample_seed,
+        n_qubits,
+        num_qaoa_probes,
+        include_simple_probes,
+        include_derived_features,
+    ) = task
+
+    try:
+        return generate_one_sample(task)
+    except Exception as e:
+        meta = {
+            "sample_id": sample_id,
+            "noise_type": noise_type,
+            "label": class_id,
+            "strength": float(strength),
+            "shots": shots,
+            "seed": sample_seed,
+            "n_qubits": n_qubits,
+            "num_qaoa_probes": num_qaoa_probes,
+            "include_simple_probes": include_simple_probes,
+            "include_derived_features": include_derived_features,
+            "error": str(e),
+        }
+        return sample_id, None, class_id, meta
+
+
+def save_checkpoint(results, output_path, noise_types, total):
+    """
+    Save a partial dataset checkpoint to disk.
+
+    Args:
+        results: List of (sample_id, fingerprint, class_id, meta) tuples
+            collected so far. Only successful (non-None fingerprint)
+            results should be passed in.
+        output_path: Final output path, used to derive checkpoint filename.
+        noise_types: List of noise type names.
+        total: Total number of samples expected (for progress reporting).
+    """
+    n = len(results)
+    partial = sorted(results, key=lambda x: x[0])
+    X_partial = np.array([r[1] for r in partial], dtype=np.float32)
+    y_partial = np.array([r[2] for r in partial], dtype=np.int64)
+    checkpoint_path = output_path.replace('.npz', f'_checkpoint_{n}.npz')
+    np.savez_compressed(
+        checkpoint_path,
+        X=X_partial,
+        y=y_partial,
+        labels=np.array(noise_types, dtype=object),
+    )
+    print(f"\nCheckpoint saved: {checkpoint_path} ({n}/{total} samples)")
+
+
 def generate_dataset(
     output_path,
-    samples_per_class=500,
+    samples_per_class=1500,
     shots=200,
     seed=42,
     n_qubits=3,
     num_qaoa_probes=5,
-    min_strength=0.01,
+    min_strength=0.05,
     max_strength=0.15,
     include_simple_probes=True,
     include_derived_features=True,
     noise_types=None,
     num_workers=4,
+    checkpoint_every=1000,
 ):
     """
     Generate the full labeled noise fingerprint dataset and save it
@@ -138,28 +220,20 @@ def generate_dataset(
         shots: Number of classical shadow measurements per probe.
         seed: Global random seed.
         n_qubits: Number of qubits.
-        num_qaoa_probes: Number of QAOA-style probe circuits per
-            fingerprint.
+        num_qaoa_probes: Number of QAOA-style probe circuits per fingerprint.
         min_strength: Minimum noise strength.
         max_strength: Maximum noise strength.
-        include_simple_probes: Whether to include the simple
-            structured probes (basis states, superposition, Bell).
-        include_derived_features: Whether to append derived
-            group/ratio features.
-        noise_types: List of noise types to include. Defaults to
-            all types in NOISE_TYPES if not provided.
-        num_workers: Number of parallel worker processes. Use 1 to
-            run sequentially without multiprocessing.
+        include_simple_probes: Whether to include simple structured probes.
+        include_derived_features: Whether to append derived features.
+        noise_types: List of noise types to include.
+        num_workers: Number of parallel worker processes.
+        checkpoint_every: Save a checkpoint every this many completed samples.
     """
 
     rng = np.random.default_rng(seed)
 
     if noise_types is None:
         noise_types = NOISE_TYPES
-
-    X = []
-    y = []
-    meta = []
 
     label_to_id = {
         noise_type: idx
@@ -172,15 +246,16 @@ def generate_dataset(
     print("Generating quantum noise fingerprint dataset")
     print("=" * 80)
     print(f"Noise types          : {noise_types}")
-    print(f"Samples per class   : {samples_per_class}")
-    print(f"Total samples       : {total}")
-    print(f"Shots per probe     : {shots}")
-    print(f"Number of qubits    : {n_qubits}")
-    print(f"QAOA probes/sample  : {num_qaoa_probes}")
-    print(f"Simple probes       : {include_simple_probes}")
-    print(f"Derived features    : {include_derived_features}")
-    print(f"Strength range      : [{min_strength}, {max_strength}]")
-    print(f"Output path         : {output_path}")
+    print(f"Samples per class    : {samples_per_class}")
+    print(f"Total samples        : {total}")
+    print(f"Shots per probe      : {shots}")
+    print(f"Number of qubits     : {n_qubits}")
+    print(f"QAOA probes/sample   : {num_qaoa_probes}")
+    print(f"Simple probes        : {include_simple_probes}")
+    print(f"Derived features     : {include_derived_features}")
+    print(f"Strength range       : [{min_strength}, {max_strength}]")
+    print(f"Output path          : {output_path}")
+    print(f"Checkpoint every     : {checkpoint_every} samples")
     print("=" * 80)
 
     tasks = []
@@ -197,7 +272,7 @@ def generate_dataset(
                 max_strength=max_strength,
             )
 
-            sample_seed = seed + (sample_id % 7000) * 17
+            sample_seed = seed + sample_id * 17
 
             task = (
                 sample_id,
@@ -215,17 +290,28 @@ def generate_dataset(
             tasks.append(task)
             sample_id += 1
 
-    print(f"Using num_workers     : {num_workers}")
+    print(f"Using num_workers    : {num_workers}")
 
     results = []
+    failed_tasks = []
 
     if num_workers == 1:
         for task in tqdm(tasks, desc="Generating samples"):
-            results.append(generate_one_sample(task))
+            r = safe_generate_one_sample(task)
+            if r[1] is None:
+                failed_tasks.append(r[3])
+                print(f"\n  SKIPPED (failed): sample_id={r[3]['sample_id']} "
+                      f"noise_type={r[3]['noise_type']} strength={r[3]['strength']:.6f} "
+                      f"seed={r[3]['seed']} -> {r[3]['error']}")
+            else:
+                results.append(r)
+
+            if len(results) % checkpoint_every == 0 and len(results) > 0:
+                save_checkpoint(results, output_path, noise_types, total)
     else:
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             futures = [
-                executor.submit(generate_one_sample, task)
+                executor.submit(safe_generate_one_sample, task)
                 for task in tasks
             ]
 
@@ -234,22 +320,26 @@ def generate_dataset(
                 total=len(futures),
                 desc="Generating samples",
             ):
-                results.append(future.result())
+                r = future.result()  # safe_generate_one_sample never raises
+                if r[1] is None:
+                    failed_tasks.append(r[3])
+                    print(f"\n  SKIPPED (failed): sample_id={r[3]['sample_id']} "
+                          f"noise_type={r[3]['noise_type']} strength={r[3]['strength']:.6f} "
+                          f"seed={r[3]['seed']} -> {r[3]['error']}")
+                else:
+                    results.append(r)
 
-    # Sort by sample_id, since ProcessPoolExecutor completion order
-    # is not guaranteed to match submission order. This keeps dataset
-    # ordering deterministic regardless of num_workers.
+                if len(results) % checkpoint_every == 0 and len(results) > 0:
+                    save_checkpoint(results, output_path, noise_types, total)
+
+    # Sort results by sample_id so dataset order is deterministic
+    # regardless of worker completion order.
     results = sorted(results, key=lambda x: x[0])
 
-    for sample_id, fingerprint, class_id, sample_meta in results:
-        X.append(fingerprint)
-        y.append(class_id)
-        meta.append(sample_meta)
-
-    X = np.array(X, dtype=np.float32)
-    y = np.array(y, dtype=np.int64)
+    X = np.array([r[1] for r in results], dtype=np.float32)
+    y = np.array([r[2] for r in results], dtype=np.int64)
     labels = np.array(noise_types, dtype=object)
-    meta = np.array(meta, dtype=object)
+    meta = np.array([r[3] for r in results], dtype=object)
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
@@ -270,6 +360,11 @@ def generate_dataset(
         include_derived_features=include_derived_features,
     )
 
+    if failed_tasks:
+        failed_log_path = output_path.replace(".npz", "_failed_tasks.json")
+        with open(failed_log_path, "w") as f:
+            json.dump(failed_tasks, f, indent=2)
+
     print("\n" + "=" * 80)
     print("Dataset generation complete")
     print("=" * 80)
@@ -278,6 +373,23 @@ def generate_dataset(
     print(f"y shape        : {y.shape}")
     print(f"Labels         : {labels.tolist()}")
     print(f"Feature dim    : {X.shape[1]}")
+
+    print()
+    print("Per-class sample counts:")
+    for class_id, noise_type in enumerate(noise_types):
+        count = int(np.sum(y == class_id))
+        flag = "  <-- SHORT" if count < samples_per_class else ""
+        print(f"  class {class_id} ({noise_type:<25}): {count} samples{flag}")
+
+    if failed_tasks:
+        print()
+        print("=" * 80)
+        print(f"WARNING: {len(failed_tasks)} task(s) failed and were skipped.")
+        print(f"Details saved to: {failed_log_path}")
+        print("Use recover_failed_tasks.py to retry/recover them, then")
+        print("merge_recovered.py to fold them into this dataset.")
+        print("=" * 80)
+
     print("=" * 80)
 
 
@@ -335,7 +447,7 @@ def main():
     parser.add_argument(
         "--samples-per-class",
         type=int,
-        default=500,
+        default=1500,
         help="Number of samples per noise type.",
     )
 
@@ -370,14 +482,14 @@ def main():
     parser.add_argument(
         "--min-strength",
         type=float,
-        default=0.01,
+        default=0.05,
         help="Minimum noise strength.",
     )
 
     parser.add_argument(
         "--max-strength",
         type=float,
-        default=0.15,
+        default=0.25,
         help="Maximum noise strength.",
     )
 
@@ -410,6 +522,13 @@ def main():
         help="Number of parallel workers for dataset generation.",
     )
 
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=1500,
+        help="Save a checkpoint every this many completed samples.",
+    )
+
     args = parser.parse_args()
 
     noise_types = parse_noise_types(args.noise_types)
@@ -427,6 +546,7 @@ def main():
         include_derived_features=not args.no_derived_features,
         noise_types=noise_types,
         num_workers=args.num_workers,
+        checkpoint_every=args.checkpoint_every,
     )
 
 
