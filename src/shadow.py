@@ -58,7 +58,9 @@ PAULI_BASES = ["X", "Y", "Z"]
 
 
 def _validate_pauli_string(pauli_string: str):
-    """Raise if pauli_string is not a non-empty string of I/X/Y/Z characters."""
+    """
+    Validate a Pauli string such as 'XIY' or 'ZZ'.
+    """
 
     allowed = {"I", "X", "Y", "Z"}
 
@@ -77,9 +79,21 @@ def _validate_pauli_string(pauli_string: str):
 
 def _rotate_into_basis(circuit, basis_string: str):
     """
-    Return a copy of circuit with basis rotations and measure_all appended.
+    Return a copy of circuit with basis rotations added before measurement.
 
-    Z basis: no rotation. X basis: H gate. Y basis: S-dagger then H.
+    Measurement convention:
+        Z basis: no rotation
+        X basis: H before measurement
+        Y basis: Sdg then H before measurement
+
+    Args:
+        circuit:
+            Qiskit QuantumCircuit without final measurements.
+        basis_string:
+            String of length n_qubits, e.g. "XYZ".
+
+    Returns:
+        New QuantumCircuit with measurement operations.
     """
 
     n_qubits = circuit.num_qubits
@@ -101,7 +115,7 @@ def _rotate_into_basis(circuit, basis_string: str):
         elif basis == "Z":
             pass
         else:
-            raise ValueError(f"Invalid basis '{basis}'. Must be X, Y, or Z.")
+            raise ValueError(f"Invalid basis '{basis}'. Use X, Y, or Z.")
 
     qc.measure_all()
 
@@ -114,15 +128,18 @@ def generate_random_bases(
     seed: int = 42,
 ):
     """
-    Sample random Pauli measurement bases for all shots.
+    Generate random Pauli measurement bases.
 
     Args:
-        n_qubits: Number of qubits in the circuit.
-        shots: Number of shadow measurements (one basis per shot).
-        seed: Random seed for reproducibility.
+        n_qubits:
+            Number of qubits.
+        shots:
+            Number of classical shadow measurements.
+        seed:
+            Random seed.
 
     Returns:
-        NumPy array of shape (shots, n_qubits) with entries in {"X", "Y", "Z"}.
+        NumPy array of shape (shots, n_qubits), entries in {"X", "Y", "Z"}.
     """
 
     rng = np.random.default_rng(seed)
@@ -138,60 +155,13 @@ def generate_random_bases(
 
 def basis_array_to_strings(bases):
     """
-    Convert a (shots, n_qubits) basis array to a list of strings.
+    Convert basis array of shape (shots, n_qubits) into list of strings.
 
     Example:
         [["X", "Z"], ["Y", "X"]] -> ["XZ", "YX"]
-
-    Args:
-        bases: NumPy array of shape (shots, n_qubits).
-
-    Returns:
-        List of shots basis strings.
     """
 
     return ["".join(row.tolist()) for row in bases]
-
-
-def _sample_one_basis(
-    circuit,
-    basis_string: str,
-    noise_model=None,
-    seed: int = 42,
-):
-    """
-    Execute circuit in the given basis for a single shot.
-
-    Uses shots=1 so each measurement can use an independently sampled
-    random basis, matching the classical shadow protocol.
-    Returns a bitstring where bitstring[q] corresponds to qubit q.
-    """
-
-    measured_circuit = _rotate_into_basis(
-        circuit=circuit,
-        basis_string=basis_string,
-    )
-
-    simulator = AerSimulator(
-        noise_model=noise_model,
-        seed_simulator=seed,
-    )
-
-    compiled = transpile(measured_circuit, simulator)
-
-    result = simulator.run(
-        compiled,
-        shots=1,
-    ).result()
-
-    counts = result.get_counts()
-
-    # Qiskit returns bitstrings with qubit order reversed (classical
-    # register order). Reverse so bitstring[q] corresponds to qubit q.
-    raw_bitstring = next(iter(counts.keys()))
-    bitstring = raw_bitstring.replace(" ", "")[::-1]
-
-    return bitstring
 
 
 def run_shadow_tomography(
@@ -201,25 +171,37 @@ def run_shadow_tomography(
     seed: int = 42,
 ):
     """
-    Run randomized Pauli classical shadow tomography on a circuit.
+    Run randomized Pauli classical shadow tomography for one circuit.
 
-    Samples `shots` independent random Pauli bases, executes the circuit
-    in each basis with a unique per-shot seed, and collects all outcomes.
+    Shots are grouped by unique measurement basis and executed with one
+    simulator call per unique basis (shots=<count for that basis>),
+    instead of one simulator call per individual shot. This preserves
+    the exact same underlying statistics as simulating shot-by-shot --
+    only the execution strategy changes.
 
     Args:
-        circuit: Qiskit QuantumCircuit without measurements.
-        noise_model: Optional Qiskit Aer NoiseModel.
-        shots: Number of randomized shadow measurements.
-        seed: Global random seed. Per-shot seeds are derived as seed + i
-            for shot index i.
+        circuit:
+            Qiskit QuantumCircuit without measurement.
+        noise_model:
+            Optional Qiskit Aer NoiseModel.
+        shots:
+            Number of randomized shadow measurements.
+        seed:
+            Random seed.
 
     Returns:
-        Dictionary with keys:
-            bases        - array of shape (shots, n_qubits)
-            basis_strings - list of basis strings, one per shot
-            bitstrings   - list of measured bitstrings in qubit order
-            n_qubits     - number of qubits
-            shots        - number of shadow measurements
+        Dictionary containing:
+            bases:
+                Array of shape (shots, n_qubits), entries X/Y/Z.
+            basis_strings:
+                List of basis strings, one per collected shot.
+            bitstrings:
+                List of measured bitstrings aligned to qubit order,
+                one per collected shot (same order as basis_strings).
+            n_qubits:
+                Number of qubits.
+            shots:
+                Number of shots.
     """
 
     n_qubits = circuit.num_qubits
@@ -232,36 +214,76 @@ def run_shadow_tomography(
 
     basis_strings = basis_array_to_strings(bases)
 
-    bitstrings = []
+    unique_bases, counts_per_basis = np.unique(basis_strings, return_counts=True)
 
-    for i, basis_string in enumerate(basis_strings):
-        bitstring = _sample_one_basis(
+    simulator = AerSimulator(
+        noise_model=noise_model,
+        seed_simulator=seed,
+    )
+
+    all_basis_strings = []
+    all_bitstrings = []
+
+    for basis_idx, (basis_string, n_shots_for_basis) in enumerate(
+        zip(unique_bases, counts_per_basis)
+    ):
+        measured_circuit = _rotate_into_basis(
             circuit=circuit,
             basis_string=basis_string,
-            noise_model=noise_model,
-            seed=seed + i,
         )
 
-        bitstrings.append(bitstring)
+        compiled = transpile(measured_circuit, simulator)
 
-    return {
+        result = simulator.run(
+            compiled,
+            shots=int(n_shots_for_basis),
+            seed_simulator=seed + basis_idx,
+        ).result()
+
+        counts = result.get_counts()
+
+        for raw_bitstring, multiplicity in counts.items():
+            # Qiskit classical bitstrings are returned with qubit order
+            # reversed. Reverse so bitstring[q] corresponds to qubit q.
+            bitstring = raw_bitstring.replace(" ", "")[::-1]
+
+            all_basis_strings.extend([basis_string] * int(multiplicity))
+            all_bitstrings.extend([bitstring] * int(multiplicity))
+
+    shadow_data = {
         "bases": bases,
-        "basis_strings": basis_strings,
-        "bitstrings": bitstrings,
+        "basis_strings": all_basis_strings,
+        "bitstrings": all_bitstrings,
         "n_qubits": n_qubits,
         "shots": shots,
     }
+
+    return shadow_data
 
 
 def _shot_matches_observable(
     basis_string: str,
     observable: str,
 ):
-    """Return True if every non-identity Pauli in observable was measured in the matching basis."""
+    """
+    Check whether a shadow shot can estimate a Pauli observable.
+
+    A shot matches if every non-identity Pauli in the observable was
+    measured in the same basis.
+
+    Example:
+        basis      = "XYZ"
+        observable = "XIY"
+
+        qubit 0: X matches X
+        qubit 1: I ignored
+        qubit 2: observable Y but basis Z -> does not match
+    """
 
     for basis, pauli in zip(basis_string, observable):
         if pauli == "I":
             continue
+
         if basis != pauli:
             return False
 
@@ -272,16 +294,28 @@ def _pauli_eigenvalue_from_bitstring(
     bitstring: str,
     observable: str,
 ):
-    """Return the product of per-qubit eigenvalues (+1 for bit 0, -1 for bit 1) at non-identity positions."""
+    """
+    Compute the Pauli eigenvalue contribution from a measured bitstring.
+
+    For matching basis measurements:
+        bit 0 -> eigenvalue +1
+        bit 1 -> eigenvalue -1
+
+    For multi-qubit Pauli observables:
+        eigenvalue = product of eigenvalues on non-identity positions.
+    """
 
     eigenvalue = 1
 
     for bit, pauli in zip(bitstring, observable):
         if pauli == "I":
             continue
+
         if bit == "1":
             eigenvalue *= -1
-        elif bit != "0":
+        elif bit == "0":
+            eigenvalue *= 1
+        else:
             raise ValueError(f"Invalid measured bit '{bit}'.")
 
     return eigenvalue
@@ -292,22 +326,16 @@ def estimate_pauli_from_shadow(
     observable: str,
 ):
     """
-    Estimate the expectation value of a Pauli observable from shadow data.
-
-    Only shots whose basis is compatible with the observable contribute.
-    Each contributing shot is weighted by the classical shadow inverse
-    channel factor 3^k, where k is the number of non-identity Paulis.
-    The result is clipped to [-1, 1] to correct for finite-shot noise.
+    Estimate expectation value of a Pauli observable from shadow data.
 
     Args:
-        shadow_data: Output of run_shadow_tomography.
-        observable: Pauli string, e.g. "XI", "ZZ", "XYZ".
+        shadow_data:
+            Output of run_shadow_tomography.
+        observable:
+            Pauli string, e.g. "XI", "ZZ", "XYZ".
 
     Returns:
-        Estimated expectation value in [-1, 1].
-
-    Raises:
-        ValueError: If the observable length does not match n_qubits.
+        Estimated expectation value <observable>.
     """
 
     _validate_pauli_string(observable)
@@ -316,7 +344,7 @@ def estimate_pauli_from_shadow(
 
     if len(observable) != n_qubits:
         raise ValueError(
-            f"Observable '{observable}' has length {len(observable)}, "
+            f"Observable {observable} has length {len(observable)}, "
             f"but shadow data has {n_qubits} qubits."
         )
 
@@ -324,20 +352,33 @@ def estimate_pauli_from_shadow(
     bitstrings = shadow_data["bitstrings"]
     shots = shadow_data["shots"]
 
+    # Weight is 3^k, where k is the number of non-identity Paulis.
     k = sum(1 for p in observable if p != "I")
     inverse_channel_factor = 3 ** k
 
     total = 0.0
 
     for basis_string, bitstring in zip(basis_strings, bitstrings):
-        if not _shot_matches_observable(basis_string, observable):
+        if not _shot_matches_observable(
+            basis_string=basis_string,
+            observable=observable,
+        ):
             continue
 
-        total += inverse_channel_factor * _pauli_eigenvalue_from_bitstring(
-            bitstring, observable
+        eigenvalue = _pauli_eigenvalue_from_bitstring(
+            bitstring=bitstring,
+            observable=observable,
         )
 
-    return float(np.clip(total / shots, -1.0, 1.0))
+        total += inverse_channel_factor * eigenvalue
+
+    expectation = total / shots
+
+    # Numerical clipping because finite shots can sometimes create
+    # slightly noisy estimates outside [-1, 1].
+    expectation = float(np.clip(expectation, -1.0, 1.0))
+
+    return expectation
 
 
 def estimate_many_paulis_from_shadow(
@@ -345,24 +386,21 @@ def estimate_many_paulis_from_shadow(
     observables,
 ):
     """
-    Estimate multiple Pauli observables from the same shadow data.
+    Estimate many Pauli observables from the same shadow data.
 
-    Reusing one set of shadow measurements for many observables is the
-    core efficiency advantage of classical shadow tomography.
-
-    Args:
-        shadow_data: Output of run_shadow_tomography.
-        observables: Iterable of Pauli strings.
-
-    Returns:
-        NumPy float32 array of shape (len(observables),) with estimated
-        expectation values.
+    This is the main advantage of classical shadows.
     """
 
-    return np.array(
-        [estimate_pauli_from_shadow(shadow_data, obs) for obs in observables],
-        dtype=np.float32,
-    )
+    values = []
+
+    for observable in observables:
+        value = estimate_pauli_from_shadow(
+            shadow_data=shadow_data,
+            observable=observable,
+        )
+        values.append(value)
+
+    return np.array(values, dtype=np.float32)
 
 
 def run_shadow_and_estimate(
@@ -373,22 +411,15 @@ def run_shadow_and_estimate(
     seed: int = 42,
 ):
     """
-    Run shadow tomography and estimate all requested observables.
-
-    Convenience wrapper combining run_shadow_tomography and
-    estimate_many_paulis_from_shadow into a single call.
-
-    Args:
-        circuit: Qiskit QuantumCircuit without measurements.
-        observables: Iterable of Pauli strings to estimate.
-        noise_model: Optional Qiskit Aer NoiseModel.
-        shots: Number of shadow measurements.
-        seed: Random seed.
+    Convenience function:
+        1. Run classical shadow tomography
+        2. Estimate all requested observables
 
     Returns:
-        Tuple of (values, shadow_data) where values is a NumPy float32
-        array of shape (len(observables),) and shadow_data is the raw
-        shadow dictionary from run_shadow_tomography.
+        values:
+            NumPy array of observable estimates.
+        shadow_data:
+            Raw shadow data dictionary.
     """
 
     shadow_data = run_shadow_tomography(
@@ -404,3 +435,14 @@ def run_shadow_and_estimate(
     )
 
     return values, shadow_data
+
+
+# Backward-compatible alias from your older code style.
+def estimate_pauli_from_shots(shadow_data, observable: str):
+    """
+    Alias for compatibility with older scripts.
+    """
+    return estimate_pauli_from_shadow(
+        shadow_data=shadow_data,
+        observable=observable,
+    )
