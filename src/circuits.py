@@ -7,14 +7,14 @@ This module defines the probe circuits used to generate measurement data
 for noise classification. Two complementary families of probes are used:
 
 1. Simple structured probes: computational basis states (|00...0>,
-   |11...1>), uniform superposition (|++...+>), and a Bell state. Each
-   probe is sensitive to a different aspect of the noise channel: the
-   basis states are primarily sensitive to population-changing errors
-   (e.g. bit flips, amplitude damping), the superposition state is
-   primarily sensitive to coherence-destroying errors (e.g. phase
-   flips, dephasing), and the Bell state additionally probes
-   correlations between qubits, making it sensitive to noise that
-   disrupts entanglement.
+   |11...1>), uniform superposition (|++...+>), and a fully-entangled
+   GHZ state. Each probe is sensitive to a different aspect of the
+   noise channel: the basis states are primarily sensitive to
+   population-changing errors (e.g. bit flips, amplitude damping), the
+   superposition state is primarily sensitive to coherence-destroying
+   errors (e.g. phase flips, dephasing), and the GHZ state probes correlations
+   across all qubits, making it sensitive to noise that disrupts entanglement 
+   and its entangling structure scales with n_qubits.
 
 2. QAOA-style probes: shallow circuits that follow the structural
    template of the Quantum Approximate Optimization Algorithm (QAOA),
@@ -29,6 +29,7 @@ for noise classification. Two complementary families of probes are used:
 Combining both families ensures the resulting feature space captures
 population, coherence, and entanglement signatures of the underlying
 noise model.
+
 """
 
 import numpy as np
@@ -48,7 +49,6 @@ def build_basis_zero_circuit(n_qubits: int = 2) -> QuantumCircuit:
     qc = QuantumCircuit(n_qubits)
     return qc
 
-
 def build_basis_one_circuit(n_qubits: int = 2) -> QuantumCircuit:
     """
     Construct the computational basis state |11...1>.
@@ -63,7 +63,6 @@ def build_basis_one_circuit(n_qubits: int = 2) -> QuantumCircuit:
     for q in range(n_qubits):
         qc.x(q)
     return qc
-
 
 def build_plus_circuit(n_qubits: int = 2) -> QuantumCircuit:
     """
@@ -85,31 +84,51 @@ def build_plus_circuit(n_qubits: int = 2) -> QuantumCircuit:
     return qc
 
 
-def build_bell_circuit(n_qubits: int = 2) -> QuantumCircuit:
+def build_ghz_circuit(n_qubits: int = 2) -> QuantumCircuit:
     """
-    Construct a Bell-state probe on the first two qubits.
+    Construct a fully-entangled GHZ state across ALL qubits:
+        |GHZ> = (|00...0> + |11...1>) / sqrt(2)
 
-    For n_qubits > 2, any additional qubits remain in |0> and are not
-    entangled with the Bell pair. This probe introduces entanglement,
-    making it sensitive to noise that disrupts correlations between
-    qubits.
+    Unlike a fixed-pair Bell state, this probe's entangling structure
+    scales with n_qubits -- every qubit participates in the
+    entanglement, rather than leaving extra qubits idle. At
+    n_qubits=2 this is exactly the standard Bell state.
+
+    Construction: H on qubit 0, then a chain of CX gates
+    (0->1, 1->2, ..., n-2->n-1) to propagate the entanglement across
+    every qubit.
 
     Args:
         n_qubits: Number of qubits in the circuit. Must be at least 2.
 
     Returns:
-        A QuantumCircuit with a Bell state prepared on qubits 0 and 1.
+        A QuantumCircuit with a GHZ state prepared across all qubits.
 
     Raises:
         ValueError: If n_qubits is less than 2.
     """
     if n_qubits < 2:
-        raise ValueError("Bell circuit requires at least 2 qubits.")
+        raise ValueError("GHZ circuit requires at least 2 qubits.")
 
     qc = QuantumCircuit(n_qubits)
     qc.h(0)
-    qc.cx(0, 1)
+    for q in range(n_qubits - 1):
+        qc.cx(q, q + 1)
     return qc
+
+
+# Backward-compatible alias -- old code calling build_bell_circuit
+# still works, but now gets the fully-entangling GHZ construction
+# rather than the original fixed-pair Bell state.
+def build_bell_circuit(n_qubits: int = 2) -> QuantumCircuit:
+    """
+    Alias for build_ghz_circuit, kept for backward compatibility with
+    any code still calling build_bell_circuit by name. See
+    build_ghz_circuit's docstring -- at n_qubits=2 this is identical
+    to the original Bell-state behavior; for n_qubits > 2 it now
+    entangles ALL qubits instead of leaving extras idle.
+    """
+    return build_ghz_circuit(n_qubits)
 
 
 def build_qaoa_circuit(
@@ -118,42 +137,30 @@ def build_qaoa_circuit(
     n_qubits: int = 2,
 ) -> QuantumCircuit:
     """
-    Construct a shallow QAOA-style probe circuit.
+    Build a small QAOA-like probe circuit.
 
-    This circuit is not used to solve an optimization problem. It is
-    used purely as a structured, parameterized probe state that
-    combines entanglement with tunable single-qubit rotations,
-    providing richer circuit behavior than the simple probes.
+    This is not meant to solve an optimization problem.
+    It is used as a structured, parameterized probe circuit.
 
-    Circuit structure (single-layer ansatz):
-        1. Initialize all qubits in a uniform superposition.
-        2. Apply one ZZ-type entangling (cost) layer between
-           neighboring qubits, parameterized by gamma.
-        3. Apply one X-rotation mixer layer to all qubits,
-           parameterized by beta.
-
-    Args:
-        gamma: Rotation angle for the entangling (cost) layer.
-        beta: Rotation angle for the mixer layer.
-        n_qubits: Number of qubits in the circuit.
-
-    Returns:
-        A parameterized QuantumCircuit implementing the QAOA-style probe.
+    For 2 qubits:
+        Start in |++>
+        Apply ZZ-type phase interaction
+        Apply X rotations
     """
 
     qc = QuantumCircuit(n_qubits)
 
-    # Initialize all qubits in a uniform superposition
+    # Initial uniform superposition
     for q in range(n_qubits):
         qc.h(q)
 
-    # Entangling layer: ZZ-type interaction via CX-RZ-CX decomposition
+    # Simple ZZ cost layer using CX-RZ-CX pattern
     for q in range(n_qubits - 1):
         qc.cx(q, q + 1)
         qc.rz(2 * gamma, q + 1)
         qc.cx(q, q + 1)
 
-    # Mixer layer: single-qubit X-rotations
+    # Mixer layer
     for q in range(n_qubits):
         qc.rx(2 * beta, q)
 
@@ -167,21 +174,21 @@ def get_probe_circuits(
     include_simple_probes: bool = True,
 ):
     """
-    Generate the full set of probe circuits used for noise fingerprinting.
+    Return a list of probe circuits.
 
     Args:
-        n_qubits: Number of qubits used in each probe circuit.
-        num_qaoa_probes: Number of randomly parameterized QAOA-style
-            probe circuits to generate.
-        seed: Random seed used to sample QAOA circuit parameters,
-            ensuring reproducibility across runs.
-        include_simple_probes: Whether to include the simple structured
-            probes (basis states, superposition, and Bell state) in
-            addition to the QAOA-style probes.
+        n_qubits:
+            Number of qubits.
+        num_qaoa_probes:
+            Number of random QAOA-like circuits.
+        seed:
+            Random seed.
+        include_simple_probes:
+            Whether to include clean basis/superposition/GHZ probes.
 
     Returns:
-        A list of (probe_name, circuit) tuples, where probe_name is a
-        string identifier and circuit is the corresponding QuantumCircuit.
+        List of tuples:
+            [(probe_name, circuit), ...]
     """
 
     probes = []
@@ -192,7 +199,7 @@ def get_probe_circuits(
         probes.append(("plus", build_plus_circuit(n_qubits)))
 
         if n_qubits >= 2:
-            probes.append(("bell", build_bell_circuit(n_qubits)))
+            probes.append(("ghz", build_ghz_circuit(n_qubits)))
 
     rng = np.random.default_rng(seed)
 

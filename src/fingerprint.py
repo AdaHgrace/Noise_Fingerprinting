@@ -7,12 +7,16 @@ Each fingerprint vector concatenates, for every probe circuit:
 1. Raw expectation values from classical shadow estimation
 2. Derived physics-inspired features: X/Y/Z grouped means, a
    coherence-vs-population ratio, and pairwise group differences
+
+The observable set scales with n_qubits. Feature vector length therefore
+varies with n_qubits: for n qubits there are 3*n*(n+1)/2 raw
+observables per probe, plus 10 derived features per probe if enabled.
 """
 
 import numpy as np
 
 from src.noise_models import get_noise_model
-from src.observables import OBSERVABLES, OBSERVABLE_GROUPS
+from src.observables import generate_observables
 from src.circuits import get_probe_circuits
 from src.shadow import run_shadow_and_estimate
 
@@ -38,7 +42,7 @@ def compute_group_mean(feature_dict, group):
     return float(np.mean(values))
 
 
-def build_derived_features(raw_values, observables=OBSERVABLES):
+def build_derived_features(raw_values, observables, observable_groups):
     """
     Build physics-inspired derived features from raw expectation values.
 
@@ -46,6 +50,8 @@ def build_derived_features(raw_values, observables=OBSERVABLES):
         raw_values: List or numpy array of expectation values for one
             probe circuit.
         observables: Observable names corresponding to raw_values.
+        observable_groups: Dict of observable groups (x_like, y_like,
+            z_like, etc.) for the SAME n_qubits as `observables`.
 
     Returns:
         List of 10 derived features for the given probe.
@@ -58,9 +64,9 @@ def build_derived_features(raw_values, observables=OBSERVABLES):
         for obs, val in zip(observables, raw_values)
     }
 
-    mean_x = compute_group_mean(feature_dict, OBSERVABLE_GROUPS["x_like"])
-    mean_y = compute_group_mean(feature_dict, OBSERVABLE_GROUPS["y_like"])
-    mean_z = compute_group_mean(feature_dict, OBSERVABLE_GROUPS["z_like"])
+    mean_x = compute_group_mean(feature_dict, observable_groups["x_like"])
+    mean_y = compute_group_mean(feature_dict, observable_groups["y_like"])
+    mean_z = compute_group_mean(feature_dict, observable_groups["z_like"])
 
     coherence_strength = mean_x + mean_y
     population_strength = mean_z
@@ -103,20 +109,23 @@ def build_fingerprint(
     Args:
         noise_type: Noise channel name (see noise_models.NOISE_TYPES).
         strength: Noise strength, in [0, 1].
-        n_qubits: Number of qubits.
+        n_qubits: Number of qubits. The observable set is generated
+            fresh for this n_qubits (see generate_observables), so
+            feature vector length depends on n_qubits.
         shots: Number of classical shadow measurement shots per probe.
         seed: Random seed.
         num_qaoa_probes: Number of QAOA-style probe circuits.
         include_simple_probes: Whether to include the simple structured
-            probes (basis states, superposition, Bell state).
+            probes (basis states, superposition, GHZ state).
         include_derived_features: Whether to append derived features
             after the raw observables for each probe.
 
     Returns:
         1D numpy array feature vector.
     """
-
     noise_model = get_noise_model(noise_type, strength)
+
+    observables, observable_groups = generate_observables(n_qubits)
 
     probes = get_probe_circuits(
         n_qubits=n_qubits,
@@ -128,10 +137,10 @@ def build_fingerprint(
     all_features = []
 
     for probe_idx, (probe_name, circuit) in enumerate(probes):
-        
-        raw_values,_ = run_shadow_and_estimate(
+
+        raw_values, _ = run_shadow_and_estimate(
             circuit=circuit,
-            observables=OBSERVABLES,
+            observables=observables,
             noise_model=noise_model,
             shots=shots,
             seed=seed + 1000 * probe_idx,
@@ -142,7 +151,8 @@ def build_fingerprint(
         if include_derived_features:
             derived_values = build_derived_features(
                 raw_values=raw_values,
-                observables=OBSERVABLES,
+                observables=observables,
+                observable_groups=observable_groups,
             )
             all_features.extend(derived_values)
 
