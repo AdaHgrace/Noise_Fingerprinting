@@ -1,6 +1,6 @@
 # Shadow-Based Noise Fingerprinting of Simulated Quantum Noise Models
 
-A scalable pipeline for identifying quantum noise channels using classical shadow tomography and physics-informed feature engineering. Given measurement data from a fixed set of 3-qubit probe circuits, the pipeline classifies the underlying noise model among ten candidate channels using ensemble machine learning methods.
+A scalable pipeline for identifying quantum noise channels using classical shadow tomography and physics-informed feature engineering. Given measurement data from a fixed set of probe circuits, the pipeline classifies the underlying noise model among ten candidate channels using ensemble machine learning methods.
 
 This repository accompanies the paper *"Shadow-Based Noise Fingerprinting of Simulated Quantum Noise Models."*
 
@@ -9,10 +9,10 @@ This repository accompanies the paper *"Shadow-Based Noise Fingerprinting of Sim
 Accurately identifying the dominant noise channel on a quantum device is a prerequisite for effective error mitigation, but full process tomography scales exponentially with system size. This project explores whether a lightweight, scalable alternative by combining randomized Pauli measurements, classical shadows with physics-informed feature engineering to reliably distinguish between common noise channels using only a small set of structured probe circuits.
 
 The pipeline:
-1. Prepares a fixed set of 3-qubit probe circuits: simple structured states + QAOA-style circuits
-2. Executes them on a simulated noisy device: Qiskit Aer
+1. Prepares a fixed set of probe circuits at a given qubit count: simple structured states (basis states, superposition, GHZ) + QAOA-style circuits
+2. Executes them on a simulated noisy device (Qiskit Aer)
 3. Estimates Pauli observables via randomized classical shadow measurements
-4. Builds a 252-dimensional feature vector per sample 
+4. Builds a feature vector per sample, scaling with qubit count (252-dimensional at 3 qubits)
 5. Classifies the noise type using Random Forest, Extra Trees, or an MLP
 
 ## Noise types covered
