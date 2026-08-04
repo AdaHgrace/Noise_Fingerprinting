@@ -71,11 +71,17 @@ python3 -m smoke_test
 ```
 ### 1. Generate a dataset
 
-If you want to skip this step, use the pre-generated dataset(3-qubit, noise sampling: [0.1,0.5]) located at:
+If you want to skip this step, pre-generated datasets are provided under `data/`, covering all qubit counts and strength ranges used in the paper:
 
-```bash
-data/qaoa_dataset.npz
-```
+| File | Qubits | Strength range | Role |
+|---|---|---|---|
+| `data/qaoa_dataset_n3_0.1_0.5.npz` | 3 | $[0.1, 0.5]$ | Primary experimental condition (main results, Table 1) |
+| `data/qaoa_dataset_n3_0.05_0.25.npz` | 3 | $[0.05, 0.25]$ | Strength-range sweep |
+| `data/qaoa_dataset_n3_0.1_1.0.npz` | 3 | $[0.1, 1.0]$ | Strength-range sweep |
+| `data/qaoa_dataset_n2_0.1_0.5.npz` | 2 | $[0.1, 0.5]$ | Qubit-count sweep |
+| `data/qaoa_dataset_n4_0.1_0.5.npz` | 4 | $[0.1, 0.5]$ | Qubit-count sweep |
+
+Each dataset contains 10,000 labeled samples (1,000 per noise model). To reproduce the main results table, use `qaoa_dataset_n3_0.1_0.5.npz`.
 
 ```bash
 python3 -m scripts.generate_dataset \
