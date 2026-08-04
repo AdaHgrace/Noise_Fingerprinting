@@ -95,7 +95,7 @@ This generates a labeled dataset and saves it as a compressed `.npz` file contai
 **Key arguments:**
 | Argument | Description | Default |
 |---|---|---|
-| `--samples-per-class` | Number of samples per noise type | 500 |
+| `--samples-per-class` | Number of samples per noise type | 1000 |
 | `--shots` | Classical shadow shots per probe circuit | 200 |
 | `--n-qubits` | Number of qubits | 3 |
 | `--num-qaoa-probes` | Number of QAOA-style probe circuits | 5 |
