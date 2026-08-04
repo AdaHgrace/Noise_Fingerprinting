@@ -132,7 +132,32 @@ On our primary experimental condition (3 qubits, noise strength sampled from $[0
 | Random Forest | 0.7355 ± 0.0104 | 0.7299 ± 0.0113 |
 | MLP | 0.7150 ± 0.0115 | 0.6987 ± 0.0237 |
 
-Extra trees and random forest achieve statistically indistinguishable accuracy, both outperforming the MLP by 2–3 percentage points on both metrics. We additionally find that classification accuracy depends non-monotonically on the noise-strength sampling range (peaking at an intermediate range rather than the narrowest or widest tested) and is largely insensitive to qubit count over the range evaluated (2 to 4 qubits). See the paper for full confusion matrix analysis, strength-range and qubit-count results, and discussion.
+Extra trees and random forest achieve statistically indistinguishable accuracy, both outperforming the MLP by 2–3 percentage points on both metrics.
+
+### Effect of noise strength
+
+Test accuracy at 3 qubits across three noise-strength sampling ranges, mean ± std over three seeds:
+
+| Strength range | Extra Trees | Random Forest | MLP |
+|---|---|---|---|
+| $[0.05, 0.25]$ | 0.7078 ± 0.0070 | 0.6990 ± 0.0106 | 0.7025 ± 0.0004 |
+| $[0.1, 0.5]$   | 0.7358 ± 0.0064 | 0.7355 ± 0.0104 | 0.7150 ± 0.0115 |
+| $[0.1, 1.0]$   | 0.6545 ± 0.0055 | 0.6508 ± 0.0046 | 0.6248 ± 0.0018 |
+
+Accuracy peaks at the intermediate range $[0.1, 0.5]$ and is lower at both the narrower low-strength range and the widest range tested, consistently across all three classifiers.
+
+### Effect of qubit count
+
+Test accuracy at the $[0.1, 0.5]$ strength range across qubit counts, mean ± std over three seeds:
+
+| Qubit count | Extra Trees | Random Forest | MLP |
+|---|---|---|---|
+| 2 | 0.7467 ± 0.0063 | 0.7527 ± 0.0055 | 0.7327 ± 0.0088 |
+| 3 | 0.7358 ± 0.0064 | 0.7355 ± 0.0104 | 0.7150 ± 0.0115 |
+| 4 | 0.7340 ± 0.0054 | 0.7445 ± 0.0053 | 0.7140 ± 0.0151 |
+
+Classification accuracy is largely insensitive to qubit count over the range tested (2 to 4 qubits), in contrast to its strong, non-monotonic dependence on the noise-strength sampling range. See the paper for full confusion matrix analysis and discussion.
+
 
 ## Citation
 
