@@ -30,6 +30,11 @@ Noise_Fingerprinting/
 │   ├── shadow.py              # Classical shadow tomography
 │   └── fingerprint.py        # Feature vector construction
 ├── scripts/
+│    ├── vizualisation/
+│      ├── plot_confusion_matrix.py # plotting confusion matrix
+│      ├── plot_qubit_analysis.py # scaling with number of qubit
+│      ├── plot_scaling.py # scaling with dataset size  
+│      └── plot_strength_analysis.py  # Noise strength
 │   ├── generate_dataset.py  # Build a labeled dataset
 │   └── train_classifier.py  # Train and evaluate classifiers
 ├── data/                     # Generated datasets (.npz)
@@ -66,7 +71,7 @@ python3 -m smoke_test
 ```
 ### 1. Generate a dataset
 
-If you want to skip this step, use the pre-generated dataset located at:
+If you want to skip this step, use the pre-generated dataset(3-qubit, noise sampling: [0.1,0.5]) located at:
 
 ```bash
 data/qaoa_dataset.npz
@@ -81,6 +86,8 @@ python3 -m scripts.generate_dataset \
     --num-qaoa-probes 5 \
     --num-workers 4 \
     --noise-types all
+    --min-strength 0.1
+    --max-strength 0.5
 ```
 
 This generates a labeled dataset and saves it as a compressed `.npz` file containing the feature matrix, labels, and per-sample metadata.
@@ -94,6 +101,8 @@ This generates a labeled dataset and saves it as a compressed `.npz` file contai
 | `--num-qaoa-probes` | Number of QAOA-style probe circuits | 5 |
 | `--noise-types` | Comma-separated list, or `all` | `all` |
 | `--num-workers` | Parallel worker processes | 4 |
+| `--min-strength` | Minimum noise strength| 0.1 |
+| `--max-strength` | Minimum noise strength | 0.5 |
 
 ### 2. Train classifiers
 
@@ -115,15 +124,15 @@ This trains the specified classifiers, evaluates them on a held-out test set, an
 
 ## Results
 
-On a dataset of 15,000 labeled samples (1,500 per class), evaluated over three random seeds:
+On our primary experimental condition (3 qubits, noise strength sampled from $[0.1, 0.5]$, 10,000 labeled samples, 1,000 per class), evaluated over three random seeds (42, 43, 44):
 
 | Classifier | Accuracy | Macro F1 |
 |---|---|---|
-| Extra Trees | 0.5446 ± 0.0064 | 0.5413 ± 0.0077 |
-| MLP | 0.5409 ± 0.0028 | 0.5326 ± 0.0060 |
-| Random Forest | 0.5366 ± 0.0046 | 0.5344 ± 0.0050 |
+| Extra Trees | 0.7358 ± 0.0064 | 0.7288 ± 0.0064 |
+| Random Forest | 0.7355 ± 0.0104 | 0.7299 ± 0.0113 |
+| MLP | 0.7150 ± 0.0115 | 0.6987 ± 0.0237 |
 
-All three classifiers achieve comparable performance, suggesting that classifier expressivity is not the primary bottleneck. See the paper for full confusion matrix analysis and discussion.
+Extra trees and random forest achieve statistically indistinguishable accuracy, both outperforming the MLP by 2–3 percentage points on both metrics. We additionally find that classification accuracy depends non-monotonically on the noise-strength sampling range (peaking at an intermediate range rather than the narrowest or widest tested) and is largely insensitive to qubit count over the range evaluated (2 to 4 qubits). See the paper for full confusion matrix analysis, strength-range and qubit-count results, and discussion.
 
 ## Citation
 
