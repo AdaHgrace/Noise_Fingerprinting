@@ -171,9 +171,11 @@ If you use this code, please cite the accompanying paper:
 
 ```bibtex
 @inproceedings{jain2026shadow,
-  title={Shadow-Based Noise Fingerprinting of Simulated Quantum Noise Models},
-  author={Jain, Vridhi and Zhang, Lei},
-  year={2026}
+  title     = {Shadow-Based Noise Fingerprinting of Simulated Quantum Noise Models},
+  author    = {Jain, Vridhi and Zhang, Lei},
+  booktitle = {Proceedings of the 2026 IEEE International Conference on Quantum Computing and Engineering (QCE) Workshops},
+  year      = {2026},
+  publisher = {IEEE}
 }
 ```
 
