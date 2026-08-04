@@ -140,7 +140,7 @@ If you use this code, please cite the accompanying paper:
 
 ```bibtex
 @inproceedings{jain2026shadow,
-  title={Shadow-Based Noise Fingerprinting for Quantum Processors},
+  title={Shadow-Based Noise Fingerprinting of Simulated Quantum Noise Models},
   author={Jain, Vridhi and Zhang, Lei},
   year={2026}
 }
