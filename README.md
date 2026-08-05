@@ -84,16 +84,7 @@ If you want to skip this step, pre-generated datasets are provided under `data/`
 Each dataset contains 10,000 labeled samples (1,000 per noise model). To reproduce the main results table, use `qaoa_dataset_n3_0.1_0.5.npz`.
 
 ```bash
-python3 -m scripts.generate_dataset \
-    --output data/my_dataset.npz \
-    --samples-per-class 1000 \
-    --shots 200 \
-    --n-qubits 3 \
-    --num-qaoa-probes 5 \
-    --num-workers 4 \
-    --noise-types all
-    --min-strength 0.1
-    --max-strength 0.5
+python3 -m scripts.generate_dataset --output data/my_dataset.npz --samples-per-class 1000 --shots 200 --n-qubits 3 --num-qaoa-probes 5 --num-workers 4 --noise-types all --min-strength 0.1 --max-strength 0.5
 ```
 
 This generates a labeled dataset and saves it as a compressed `.npz` file containing the feature matrix, labels, and per-sample metadata.
@@ -113,9 +104,7 @@ This generates a labeled dataset and saves it as a compressed `.npz` file contai
 ### 2. Train classifiers
 
 ```bash
-python3 -m scripts.train_classifier \
-    --dataset data/my_dataset.npz \
-    --models extra_trees,random_forest,mlp
+python3 -m scripts.train_classifier --dataset data/my_dataset.npz --models extra_trees,random_forest,mlp --seed 42
 ```
 
 This trains the specified classifiers, evaluates them on a held-out test set, and saves trained models, confusion matrices, classification reports, and a `summary.json` with accuracy and macro F1 for each model to a timestamped folder under `results/`.

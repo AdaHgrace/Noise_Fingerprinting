@@ -25,13 +25,15 @@ be retried/recovered afterward (see recover_failed_tasks.py).
 
 Usage (run from the project root):
     python3 -m scripts.generate_dataset \
-        --output data/your_dataset.npz \
-        --samples-per-class 1500 \
-        --shots 200 \
-        --n-qubits 3 \
-        --num-qaoa-probes 5 \
-        --num-workers 4 \
-        --noise-types all
+    --output data/my_dataset.npz \
+    --samples-per-class 1000 \
+    --shots 200 \
+    --n-qubits 3 \
+    --num-qaoa-probes 5 \
+    --num-workers 4 \
+    --noise-types all \
+    --min-strength 0.1 \
+    --max-strength 0.5
 """
 
 import os
@@ -229,7 +231,7 @@ def generate_dataset(
         num_workers: Number of parallel worker processes.
         checkpoint_every: Save a checkpoint every this many completed samples.
     """
-
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     rng = np.random.default_rng(seed)
 
     if noise_types is None:
@@ -341,7 +343,7 @@ def generate_dataset(
     labels = np.array(noise_types, dtype=object)
     meta = np.array([r[3] for r in results], dtype=object)
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    #os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     np.savez_compressed(
         output_path,
@@ -525,7 +527,7 @@ def main():
     parser.add_argument(
         "--checkpoint-every",
         type=int,
-        default=1500,
+        default=1000,
         help="Save a checkpoint every this many completed samples.",
     )
 
