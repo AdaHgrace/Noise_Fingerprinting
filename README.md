@@ -101,6 +101,8 @@ This generates a labeled dataset and saves it as a compressed `.npz` file contai
 | `--num-workers` | Parallel worker processes | 4 |
 | `--min-strength` | Minimum noise strength| 0.1 |
 | `--max-strength` | Minimum noise strength | 0.5 |
+| `--checkpoint-every` | Save a resumable checkpoint every *N* successful samples | 1000 |
+| `--resume` | Resume from the latest compatible checkpoint for the specified output dataset | Disabled |
 
 ### Resuming an interrupted run
 
