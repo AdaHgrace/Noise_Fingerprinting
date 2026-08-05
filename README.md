@@ -107,7 +107,7 @@ This generates a labeled dataset and saves it as a compressed `.npz` file contai
 ### Resuming an interrupted run
 
 Dataset generation automatically saves checkpoints every `--checkpoint-every`
-successful samples (default: 1000).
+successful samples.
 
 If a run is interrupted, resume it by
 rerunning the same command with the `--resume` flag:
