@@ -36,9 +36,11 @@ Usage (run from the project root):
     --max-strength 0.5
 """
 
-import os
+
 import json
 import argparse
+from pathlib import Path
+import re
 import numpy as np
 from tqdm import tqdm
 from src.noise_models import NOISE_TYPES
@@ -171,7 +173,86 @@ def safe_generate_one_sample(task):
         return sample_id, None, class_id, meta
 
 
-def save_checkpoint(results, output_path, noise_types, total):
+def ensure_output_directory(output_path):
+    """Create the parent directory for an output file if needed."""
+    Path(output_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+
+
+def checkpoint_path_for(output_path, completed_count):
+    """Return the checkpoint path for a completed-sample count."""
+    output_path = Path(output_path).expanduser()
+    suffix = output_path.suffix or ".npz"
+    return output_path.with_name(
+        f"{output_path.stem}_checkpoint_{completed_count}{suffix}"
+    )
+
+
+def find_latest_checkpoint(output_path):
+    """Find the checkpoint with the largest saved-result count."""
+    output_path = Path(output_path).expanduser()
+    suffix = output_path.suffix or ".npz"
+    pattern = f"{output_path.stem}_checkpoint_*{suffix}"
+    regex = re.compile(
+        rf"^{re.escape(output_path.stem)}_checkpoint_(\d+){re.escape(suffix)}$"
+    )
+
+    candidates = []
+    for path in output_path.parent.glob(pattern):
+        match = regex.match(path.name)
+        if match:
+            candidates.append((int(match.group(1)), path))
+
+    return max(candidates, default=(None, None), key=lambda item: item[0])[1]
+
+
+def load_checkpoint(checkpoint_path, expected_noise_types, expected_config):
+    """Load a resumable checkpoint and validate its label configuration."""
+    with np.load(checkpoint_path, allow_pickle=True) as data:
+        required = {"X", "y", "labels", "sample_ids", "meta", "config"}
+        missing = required.difference(data.files)
+        if missing:
+            raise ValueError(
+                f"Checkpoint {checkpoint_path} is not resumable; missing keys: "
+                f"{sorted(missing)}. Older checkpoints must be regenerated."
+            )
+
+        labels = data["labels"].tolist()
+        if labels != list(expected_noise_types):
+            raise ValueError(
+                "Checkpoint noise types do not match this run. "
+                f"Checkpoint: {labels}; requested: {list(expected_noise_types)}"
+            )
+
+        saved_config = data["config"].item()
+        if saved_config != expected_config:
+            differences = {
+                key: (saved_config.get(key), expected_config.get(key))
+                for key in sorted(set(saved_config) | set(expected_config))
+                if saved_config.get(key) != expected_config.get(key)
+            }
+            raise ValueError(
+                "Checkpoint settings do not match this run. "
+                f"Differences (checkpoint, requested): {differences}"
+            )
+
+        X = data["X"]
+        y = data["y"]
+        sample_ids = data["sample_ids"]
+        meta = data["meta"]
+
+    if not (len(X) == len(y) == len(sample_ids) == len(meta)):
+        raise ValueError(f"Checkpoint {checkpoint_path} contains inconsistent array lengths.")
+
+    results = [
+        (int(sample_id), fingerprint, int(class_id), metadata)
+        for sample_id, fingerprint, class_id, metadata in zip(
+            sample_ids, X, y, meta
+        )
+    ]
+    return results
+
+
+def save_checkpoint(results, output_path, noise_types, total, config):
     """
     Save a partial dataset checkpoint to disk.
 
@@ -182,17 +263,25 @@ def save_checkpoint(results, output_path, noise_types, total):
         output_path: Final output path, used to derive checkpoint filename.
         noise_types: List of noise type names.
         total: Total number of samples expected (for progress reporting).
+        config: Generation settings required to validate a future resume.
     """
     n = len(results)
     partial = sorted(results, key=lambda x: x[0])
     X_partial = np.array([r[1] for r in partial], dtype=np.float32)
     y_partial = np.array([r[2] for r in partial], dtype=np.int64)
-    checkpoint_path = output_path.replace('.npz', f'_checkpoint_{n}.npz')
+    sample_ids_partial = np.array([r[0] for r in partial], dtype=np.int64)
+    meta_partial = np.array([r[3] for r in partial], dtype=object)
+
+    ensure_output_directory(output_path)
+    checkpoint_path = checkpoint_path_for(output_path, n)
     np.savez_compressed(
         checkpoint_path,
         X=X_partial,
         y=y_partial,
         labels=np.array(noise_types, dtype=object),
+        sample_ids=sample_ids_partial,
+        meta=meta_partial,
+        config=np.array(config, dtype=object),
     )
     print(f"\nCheckpoint saved: {checkpoint_path} ({n}/{total} samples)")
 
@@ -211,6 +300,7 @@ def generate_dataset(
     noise_types=None,
     num_workers=4,
     checkpoint_every=1000,
+    resume=False,
 ):
     """
     Generate the full labeled noise fingerprint dataset and save it
@@ -230,8 +320,12 @@ def generate_dataset(
         noise_types: List of noise types to include.
         num_workers: Number of parallel worker processes.
         checkpoint_every: Save a checkpoint every this many completed samples.
+        resume: Resume from the latest compatible checkpoint if available.
     """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    output_path = Path(output_path).expanduser()
+    ensure_output_directory(output_path)
+
     rng = np.random.default_rng(seed)
 
     if noise_types is None:
@@ -243,6 +337,19 @@ def generate_dataset(
     }
 
     total = samples_per_class * len(noise_types)
+
+    resume_config = {
+        "samples_per_class": int(samples_per_class),
+        "shots": int(shots),
+        "seed": int(seed),
+        "n_qubits": int(n_qubits),
+        "num_qaoa_probes": int(num_qaoa_probes),
+        "min_strength": float(min_strength),
+        "max_strength": float(max_strength),
+        "include_simple_probes": bool(include_simple_probes),
+        "include_derived_features": bool(include_derived_features),
+        "noise_types": list(noise_types),
+    }
 
     print("=" * 80)
     print("Generating quantum noise fingerprint dataset")
@@ -258,6 +365,7 @@ def generate_dataset(
     print(f"Strength range       : [{min_strength}, {max_strength}]")
     print(f"Output path          : {output_path}")
     print(f"Checkpoint every     : {checkpoint_every} samples")
+    print(f"Resume enabled       : {resume}")
     print("=" * 80)
 
     tasks = []
@@ -297,6 +405,23 @@ def generate_dataset(
     results = []
     failed_tasks = []
 
+    if resume:
+        checkpoint_path = find_latest_checkpoint(output_path)
+        if checkpoint_path is None:
+            print("Resume requested, but no checkpoint was found. Starting from scratch.")
+        else:
+            results = load_checkpoint(checkpoint_path, noise_types, resume_config)
+            completed_ids = {r[0] for r in results}
+            tasks = [task for task in tasks if task[0] not in completed_ids]
+            print(f"Resuming from       : {checkpoint_path}")
+            print(f"Loaded samples      : {len(results)}")
+            print(f"Remaining tasks     : {len(tasks)}")
+
+    if not tasks:
+        print("All requested samples are already present in the checkpoint.")
+
+    last_checkpoint_count = len(results)
+
     if num_workers == 1:
         for task in tqdm(tasks, desc="Generating samples"):
             r = safe_generate_one_sample(task)
@@ -308,8 +433,13 @@ def generate_dataset(
             else:
                 results.append(r)
 
-            if len(results) % checkpoint_every == 0 and len(results) > 0:
-                save_checkpoint(results, output_path, noise_types, total)
+            if (
+                checkpoint_every > 0
+                and len(results) > last_checkpoint_count
+                and len(results) % checkpoint_every == 0
+            ):
+                save_checkpoint(results, output_path, noise_types, total, resume_config)
+                last_checkpoint_count = len(results)
     else:
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             futures = [
@@ -331,8 +461,13 @@ def generate_dataset(
                 else:
                     results.append(r)
 
-                if len(results) % checkpoint_every == 0 and len(results) > 0:
-                    save_checkpoint(results, output_path, noise_types, total)
+                if (
+                    checkpoint_every > 0
+                    and len(results) > last_checkpoint_count
+                    and len(results) % checkpoint_every == 0
+                ):
+                    save_checkpoint(results, output_path, noise_types, total, resume_config)
+                    last_checkpoint_count = len(results)
 
     # Sort results by sample_id so dataset order is deterministic
     # regardless of worker completion order.
@@ -342,8 +477,6 @@ def generate_dataset(
     y = np.array([r[2] for r in results], dtype=np.int64)
     labels = np.array(noise_types, dtype=object)
     meta = np.array([r[3] for r in results], dtype=object)
-
-    #os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     np.savez_compressed(
         output_path,
@@ -363,7 +496,7 @@ def generate_dataset(
     )
 
     if failed_tasks:
-        failed_log_path = output_path.replace(".npz", "_failed_tasks.json")
+        failed_log_path = output_path.with_name(f"{output_path.stem}_failed_tasks.json")
         with open(failed_log_path, "w") as f:
             json.dump(failed_tasks, f, indent=2)
 
@@ -531,6 +664,13 @@ def main():
         help="Save a checkpoint every this many completed samples.",
     )
 
+
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from the latest compatible checkpoint for this output path.",
+    )
+
     args = parser.parse_args()
 
     noise_types = parse_noise_types(args.noise_types)
@@ -549,6 +689,7 @@ def main():
         noise_types=noise_types,
         num_workers=args.num_workers,
         checkpoint_every=args.checkpoint_every,
+        resume=args.resume,
     )
 
 

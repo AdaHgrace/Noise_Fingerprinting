@@ -102,6 +102,30 @@ This generates a labeled dataset and saves it as a compressed `.npz` file contai
 | `--min-strength` | Minimum noise strength| 0.1 |
 | `--max-strength` | Minimum noise strength | 0.5 |
 
+### Resuming an interrupted run
+
+Dataset generation automatically saves checkpoints every `--checkpoint-every`
+successful samples (default: 1000).
+
+If a run is interrupted, resume it by
+rerunning the same command with the `--resume` flag:
+
+```bash
+python3 -m scripts.generate_dataset --output data/my_dataset.npz --samples-per-class 1000 --shots 200 --n-qubits 3 --num-qaoa-probes 5 --num-workers 4 --noise-types all --min-strength 0.1 --max-strength 0.5 --resume
+```
+
+The script will automatically:
+
+- locate the latest checkpoint for the specified output dataset,
+- restore all previously generated samples,
+- generate only the remaining samples, and
+- write the completed dataset to the requested output file.
+
+**Note:** Resume only works when all dataset-generation parameters match the
+original run (number of qubits, strength range, probe configuration, noise
+types, etc.). If they differ, the script will report the mismatch rather than
+mix incompatible samples into the same dataset.
+
 ### 2. Train classifiers
 
 ```bash
