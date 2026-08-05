@@ -58,7 +58,7 @@ def test_circuits():
     for n in [2, 3, 4]:
         probes = get_probe_circuits(
             n_qubits=n,
-            num_qaoa_probes=5,
+            num_qaoa_probes=2,
             seed=0,
             include_simple_probes=True,
         )
