@@ -54,7 +54,8 @@ cd Noise_Fingerprinting
 
 python3 -m venv .venv
 source .venv/bin/activate   # On Windows: .venv\Scripts\activate
-
+```
+```bash
 pip install -r requirements.txt
 ```
 
