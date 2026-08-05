@@ -20,7 +20,6 @@ __pycache__/
 !.env.example
 
 # Data
-data/
 datasets/
 *.csv
 *.tsv
