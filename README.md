@@ -131,7 +131,7 @@ mix incompatible samples into the same dataset.
 ### 2. Train classifiers
 
 ```bash
-python3 -m scripts.train_classifier --dataset data/my_dataset.npz --models extra_trees,random_forest,mlp --seed 42
+python3 -m scripts.train_classifier --dataset data/my_dataset.npz --models extra_trees,random_forest,mlp --seed 44
 ```
 
 This trains the specified classifiers, evaluates them on a held-out test set, and saves trained models, confusion matrices, classification reports, and a `summary.json` with accuracy and macro F1 for each model to a timestamped folder under `results/`.
@@ -140,7 +140,7 @@ This trains the specified classifiers, evaluates them on a held-out test set, an
 | Argument | Description | Default |
 |---|---|---|
 | `--models` | Comma-separated: `random_forest`, `extra_trees`, `mlp` | all three |
-| `--seed` | Random seed (affects model init) | 42 |
+| `--seed` | Random seed (affects model init) | 44 |
 | `--dataset` | dataset to be used | files under data folder |
 | `--output-dir` | Output directory | timestamped folder |
 
