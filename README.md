@@ -180,6 +180,9 @@ Test accuracy at the $[0.1, 0.5]$ strength range across qubit counts, mean ± st
 
 Classification accuracy is largely insensitive to qubit count over the range tested (2 to 4 qubits), in contrast to its strong, non-monotonic dependence on the noise-strength sampling range. See the paper for full confusion matrix analysis and discussion.
 
+## Disclosure
+
+Generative AI (GenAI) tools were used to support the development of this project. All AI-assisted content and code were reviewed, verified, and, where necessary, revised by human contributors before being incorporated into the repository.
 
 ## Citation
 
